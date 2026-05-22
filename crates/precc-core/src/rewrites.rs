@@ -24,78 +24,334 @@ pub struct RewriteRule {
 /// Standard rule table. Checked in order; first match wins.
 pub static RULES: &[RewriteRule] = &[
     // --- Git ---
-    RewriteRule { from: "git status",     canonical: "git status",     est_tokens_saved: 160 },
-    RewriteRule { from: "git diff",       canonical: "git diff",       est_tokens_saved: 160 },
-    RewriteRule { from: "git log",        canonical: "git log",        est_tokens_saved: 160 },
-    RewriteRule { from: "git add",        canonical: "git add",        est_tokens_saved: 60  },
-    RewriteRule { from: "git commit",     canonical: "git commit",     est_tokens_saved: 60  },
-    RewriteRule { from: "git push",       canonical: "git push",       est_tokens_saved: 60  },
-    RewriteRule { from: "git pull",       canonical: "git pull",       est_tokens_saved: 60  },
-    RewriteRule { from: "git branch",     canonical: "git branch",     est_tokens_saved: 60  },
-    RewriteRule { from: "git fetch",      canonical: "git fetch",      est_tokens_saved: 60  },
-    RewriteRule { from: "git stash",      canonical: "git stash",      est_tokens_saved: 60  },
-    RewriteRule { from: "git show",       canonical: "git show",       est_tokens_saved: 60  },
+    RewriteRule {
+        from: "git status",
+        canonical: "git status",
+        est_tokens_saved: 160,
+    },
+    RewriteRule {
+        from: "git diff",
+        canonical: "git diff",
+        est_tokens_saved: 160,
+    },
+    RewriteRule {
+        from: "git log",
+        canonical: "git log",
+        est_tokens_saved: 160,
+    },
+    RewriteRule {
+        from: "git add",
+        canonical: "git add",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git commit",
+        canonical: "git commit",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git push",
+        canonical: "git push",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git pull",
+        canonical: "git pull",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git branch",
+        canonical: "git branch",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git fetch",
+        canonical: "git fetch",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git stash",
+        canonical: "git stash",
+        est_tokens_saved: 60,
+    },
+    RewriteRule {
+        from: "git show",
+        canonical: "git show",
+        est_tokens_saved: 60,
+    },
     // --- GitHub CLI ---
-    RewriteRule { from: "gh pr",          canonical: "gh pr",          est_tokens_saved: 120 },
-    RewriteRule { from: "gh issue",       canonical: "gh issue",       est_tokens_saved: 120 },
-    RewriteRule { from: "gh run",         canonical: "gh run",         est_tokens_saved: 120 },
+    RewriteRule {
+        from: "gh pr",
+        canonical: "gh pr",
+        est_tokens_saved: 120,
+    },
+    RewriteRule {
+        from: "gh issue",
+        canonical: "gh issue",
+        est_tokens_saved: 120,
+    },
+    RewriteRule {
+        from: "gh run",
+        canonical: "gh run",
+        est_tokens_saved: 120,
+    },
     // --- Cargo ---
-    RewriteRule { from: "cargo test",     canonical: "cargo test",     est_tokens_saved: 420 },
-    RewriteRule { from: "cargo build",    canonical: "cargo build",    est_tokens_saved: 420 },
-    RewriteRule { from: "cargo clippy",   canonical: "cargo clippy",   est_tokens_saved: 420 },
-    RewriteRule { from: "cargo check",    canonical: "cargo check",    est_tokens_saved: 300 },
-    RewriteRule { from: "cargo run",      canonical: "cargo run",      est_tokens_saved: 200 },
-    RewriteRule { from: "cargo fmt",      canonical: "cargo fmt",      est_tokens_saved: 60  },
+    RewriteRule {
+        from: "cargo test",
+        canonical: "cargo test",
+        est_tokens_saved: 420,
+    },
+    RewriteRule {
+        from: "cargo build",
+        canonical: "cargo build",
+        est_tokens_saved: 420,
+    },
+    RewriteRule {
+        from: "cargo clippy",
+        canonical: "cargo clippy",
+        est_tokens_saved: 420,
+    },
+    RewriteRule {
+        from: "cargo check",
+        canonical: "cargo check",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "cargo run",
+        canonical: "cargo run",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "cargo fmt",
+        canonical: "cargo fmt",
+        est_tokens_saved: 60,
+    },
     // --- npm / yarn / pnpm ---
-    RewriteRule { from: "npm test",       canonical: "vitest run",     est_tokens_saved: 380 },
-    RewriteRule { from: "npm run",        canonical: "npm run",        est_tokens_saved: 200 },
-    RewriteRule { from: "npm install",    canonical: "npm install",    est_tokens_saved: 200 },
-    RewriteRule { from: "yarn test",      canonical: "vitest run",     est_tokens_saved: 380 },
-    RewriteRule { from: "yarn add",       canonical: "yarn add",       est_tokens_saved: 200 },
-    RewriteRule { from: "pnpm test",      canonical: "vitest run",     est_tokens_saved: 380 },
-    RewriteRule { from: "pnpm vitest",    canonical: "vitest run",     est_tokens_saved: 380 },
-    RewriteRule { from: "vitest",         canonical: "vitest run",     est_tokens_saved: 380 },
-    RewriteRule { from: "pnpm tsc",       canonical: "tsc",            est_tokens_saved: 300 },
-    RewriteRule { from: "npx tsc",        canonical: "tsc",            est_tokens_saved: 300 },
-    RewriteRule { from: "tsc",            canonical: "tsc",            est_tokens_saved: 300 },
-    RewriteRule { from: "pnpm lint",      canonical: "lint",           est_tokens_saved: 300 },
-    RewriteRule { from: "npx eslint",     canonical: "lint",           est_tokens_saved: 300 },
-    RewriteRule { from: "eslint",         canonical: "lint",           est_tokens_saved: 300 },
-    RewriteRule { from: "npx prettier",   canonical: "prettier",       est_tokens_saved: 200 },
-    RewriteRule { from: "prettier",       canonical: "prettier",       est_tokens_saved: 200 },
-    RewriteRule { from: "pnpm playwright",canonical: "playwright",     est_tokens_saved: 400 },
-    RewriteRule { from: "npx playwright", canonical: "playwright",     est_tokens_saved: 400 },
-    RewriteRule { from: "playwright",     canonical: "playwright",     est_tokens_saved: 400 },
-    RewriteRule { from: "npx prisma",     canonical: "prisma",         est_tokens_saved: 200 },
-    RewriteRule { from: "prisma",         canonical: "prisma",         est_tokens_saved: 200 },
-    RewriteRule { from: "pnpm list",      canonical: "pnpm list",      est_tokens_saved: 100 },
-    RewriteRule { from: "pnpm ls",        canonical: "pnpm ls",        est_tokens_saved: 100 },
-    RewriteRule { from: "pnpm outdated",  canonical: "pnpm outdated",  est_tokens_saved: 100 },
+    RewriteRule {
+        from: "npm test",
+        canonical: "vitest run",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "npm run",
+        canonical: "npm run",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "npm install",
+        canonical: "npm install",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "yarn test",
+        canonical: "vitest run",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "yarn add",
+        canonical: "yarn add",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "pnpm test",
+        canonical: "vitest run",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "pnpm vitest",
+        canonical: "vitest run",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "vitest",
+        canonical: "vitest run",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "pnpm tsc",
+        canonical: "tsc",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "npx tsc",
+        canonical: "tsc",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "tsc",
+        canonical: "tsc",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "pnpm lint",
+        canonical: "lint",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "npx eslint",
+        canonical: "lint",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "eslint",
+        canonical: "lint",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "npx prettier",
+        canonical: "prettier",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "prettier",
+        canonical: "prettier",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "pnpm playwright",
+        canonical: "playwright",
+        est_tokens_saved: 400,
+    },
+    RewriteRule {
+        from: "npx playwright",
+        canonical: "playwright",
+        est_tokens_saved: 400,
+    },
+    RewriteRule {
+        from: "playwright",
+        canonical: "playwright",
+        est_tokens_saved: 400,
+    },
+    RewriteRule {
+        from: "npx prisma",
+        canonical: "prisma",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "prisma",
+        canonical: "prisma",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "pnpm list",
+        canonical: "pnpm list",
+        est_tokens_saved: 100,
+    },
+    RewriteRule {
+        from: "pnpm ls",
+        canonical: "pnpm ls",
+        est_tokens_saved: 100,
+    },
+    RewriteRule {
+        from: "pnpm outdated",
+        canonical: "pnpm outdated",
+        est_tokens_saved: 100,
+    },
     // --- Python ---
-    RewriteRule { from: "python -m pytest", canonical: "pytest",       est_tokens_saved: 380 },
-    RewriteRule { from: "pytest",         canonical: "pytest",         est_tokens_saved: 380 },
-    RewriteRule { from: "pip install",    canonical: "pip install",    est_tokens_saved: 200 },
+    RewriteRule {
+        from: "python -m pytest",
+        canonical: "pytest",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "pytest",
+        canonical: "pytest",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "pip install",
+        canonical: "pip install",
+        est_tokens_saved: 200,
+    },
     // --- Go ---
-    RewriteRule { from: "go test",        canonical: "go test",        est_tokens_saved: 380 },
-    RewriteRule { from: "go build",       canonical: "go build",       est_tokens_saved: 300 },
+    RewriteRule {
+        from: "go test",
+        canonical: "go test",
+        est_tokens_saved: 380,
+    },
+    RewriteRule {
+        from: "go build",
+        canonical: "go build",
+        est_tokens_saved: 300,
+    },
     // --- Files / search ---
-    RewriteRule { from: "cat",            canonical: "read",           est_tokens_saved: 200 },
-    RewriteRule { from: "ls",             canonical: "ls",             est_tokens_saved: 100 },
-    RewriteRule { from: "rg",             canonical: "grep",           est_tokens_saved: 200 },
-    RewriteRule { from: "grep",           canonical: "grep",           est_tokens_saved: 200 },
+    RewriteRule {
+        from: "cat",
+        canonical: "read",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "ls",
+        canonical: "ls",
+        est_tokens_saved: 100,
+    },
+    RewriteRule {
+        from: "rg",
+        canonical: "grep",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "grep",
+        canonical: "grep",
+        est_tokens_saved: 200,
+    },
     // --- Docker / kubernetes ---
-    RewriteRule { from: "docker build",   canonical: "docker build",   est_tokens_saved: 500 },
-    RewriteRule { from: "docker run",     canonical: "docker run",     est_tokens_saved: 300 },
-    RewriteRule { from: "docker ps",      canonical: "docker ps",      est_tokens_saved: 200 },
-    RewriteRule { from: "docker images",  canonical: "docker images",  est_tokens_saved: 200 },
-    RewriteRule { from: "docker logs",    canonical: "docker logs",    est_tokens_saved: 400 },
-    RewriteRule { from: "kubectl describe", canonical: "kubectl describe", est_tokens_saved: 300 },
-    RewriteRule { from: "kubectl apply",  canonical: "kubectl apply",  est_tokens_saved: 200 },
-    RewriteRule { from: "kubectl get",    canonical: "kubectl get",    est_tokens_saved: 300 },
-    RewriteRule { from: "kubectl logs",   canonical: "kubectl logs",   est_tokens_saved: 400 },
+    RewriteRule {
+        from: "docker build",
+        canonical: "docker build",
+        est_tokens_saved: 500,
+    },
+    RewriteRule {
+        from: "docker run",
+        canonical: "docker run",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "docker ps",
+        canonical: "docker ps",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "docker images",
+        canonical: "docker images",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "docker logs",
+        canonical: "docker logs",
+        est_tokens_saved: 400,
+    },
+    RewriteRule {
+        from: "kubectl describe",
+        canonical: "kubectl describe",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "kubectl apply",
+        canonical: "kubectl apply",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "kubectl get",
+        canonical: "kubectl get",
+        est_tokens_saved: 300,
+    },
+    RewriteRule {
+        from: "kubectl logs",
+        canonical: "kubectl logs",
+        est_tokens_saved: 400,
+    },
     // --- HTTP / build ---
-    RewriteRule { from: "curl",           canonical: "curl",           est_tokens_saved: 200 },
-    RewriteRule { from: "make",           canonical: "make",           est_tokens_saved: 400 },
+    RewriteRule {
+        from: "curl",
+        canonical: "curl",
+        est_tokens_saved: 200,
+    },
+    RewriteRule {
+        from: "make",
+        canonical: "make",
+        est_tokens_saved: 400,
+    },
 ];
 
 /// Find a matching rule for `command`, ignoring a leading `cd … && ` prefix.
@@ -138,7 +394,10 @@ fn matches_prefix(command: &str, prefix: &str) -> bool {
         return true;
     }
     if command.starts_with(prefix) {
-        matches!(command.as_bytes().get(prefix.len()), Some(b' ') | Some(b'\t') | Some(b'\n'))
+        matches!(
+            command.as_bytes().get(prefix.len()),
+            Some(b' ') | Some(b'\t') | Some(b'\n')
+        )
     } else {
         false
     }

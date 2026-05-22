@@ -881,7 +881,10 @@ fn cmd_savings() -> Result<()> {
         mined_preventions, model.precc_per_mined_occurrence, mined_tokens
     );
     println!();
-    println!("  Prevention total      : {:>8.0} tokens", prevention_tokens);
+    println!(
+        "  Prevention total      : {:>8.0} tokens",
+        prevention_tokens
+    );
     println!();
 
     // ---- Grand total ---------------------------------------------------
@@ -895,7 +898,10 @@ fn cmd_savings() -> Result<()> {
     println!("Summary");
     println!("-------");
     println!("  Compressor wraps      : {:>8.0} tokens", wrap_tokens);
-    println!("  Error prevention      : {:>8.0} tokens", prevention_tokens);
+    println!(
+        "  Error prevention      : {:>8.0} tokens",
+        prevention_tokens
+    );
     println!("  Grand total saved     : {:>8.0} tokens", grand_total);
     if grand_total > 0.0 {
         println!("  Prevention share      : {:>7.1}%", prevention_pct);

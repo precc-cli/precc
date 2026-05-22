@@ -56,8 +56,7 @@ static RTK_AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
             let candidate = std::path::Path::new(dir).join("rtk");
             if candidate.is_file() {
                 if let Ok(home) = std::env::var("HOME") {
-                    let cache =
-                        std::path::Path::new(&home).join(".local/share/precc/.rtk_path");
+                    let cache = std::path::Path::new(&home).join(".local/share/precc/.rtk_path");
                     let _ = std::fs::write(&cache, candidate.to_string_lossy().as_ref());
                 }
                 return true;
