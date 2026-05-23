@@ -2,6 +2,8 @@
 
 **Predictive error correction for LLM-driven shells.**
 
+![precc lede demo](assets/precc-lede.gif)
+
 `precc` is a `PreToolUse:Bash` hook for Claude Code (and similar agentic
 shells) that rewrites commands *before* they run, turning what would have
 been a failed turn into a successful one. It is the missing input-shaping
