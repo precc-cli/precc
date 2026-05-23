@@ -1,0 +1,9 @@
+[package]
+name = "precc-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "$SHELL wrapper that runs commands through the PRECC pipeline (for Aider and other tools without a hook surface)"
+
+[dependencies]
+precc-core = { path = "../precc-core" }

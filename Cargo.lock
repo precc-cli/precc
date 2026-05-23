@@ -360,6 +360,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "precc-cursor-hook"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "precc-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "precc-hook"
 version = "0.1.0"
 dependencies = [
@@ -367,6 +377,13 @@ dependencies = [
  "precc-core",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "precc-shell"
+version = "0.1.0"
+dependencies = [
+ "precc-core",
 ]
 
 [[package]]

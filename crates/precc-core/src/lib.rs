@@ -7,6 +7,7 @@ pub mod db;
 pub mod gdb;
 pub mod metrics;
 pub mod mining;
+pub mod pipeline;
 pub mod promote;
 pub mod rewrites;
 pub mod skills;

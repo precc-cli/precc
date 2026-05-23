@@ -36,7 +36,9 @@ operational; the compressor layer ships with two adapters (`none`,
 
 ```bash
 cargo install --path crates/precc-cli
-cargo install --path crates/precc-hook
+cargo install --path crates/precc-hook            # Claude Code
+cargo install --path crates/precc-cursor-hook     # Cursor (optional)
+cargo install --path crates/precc-shell           # Aider (optional)
 precc init
 ```
 
@@ -51,6 +53,26 @@ Then add to your Claude Code `settings.json`:
   }
 }
 ```
+
+## Other tools
+
+PRECC also ships first-class shims for two more agentic-coding tools:
+
+### Cursor
+
+Cursor exposes a `beforeShellExecution` hook. Install `precc-cursor-hook`
+and drop [`examples/cursor/hooks.json`](examples/cursor/hooks.json) at
+`~/.cursor/hooks.json`. Note: Cursor's hook protocol is allow/deny only
+(no rewrite field), so PRECC denies wrong-dir commands and surfaces the
+corrected invocation via `agent_message`. The agent re-runs the
+suggested command on the next turn.
+
+### Aider
+
+Aider has no hook surface. PRECC ships [`precc-shell`](crates/precc-shell),
+a thin `$SHELL` wrapper. Install it and set `SHELL=$(which precc-shell)`;
+Aider's `/run` invocations now flow through PRECC. See
+[`examples/aider/`](examples/aider/) for details.
 
 ## License
 

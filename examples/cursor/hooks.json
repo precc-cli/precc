@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "precc-cursor-hook",
+        "type": "command",
+        "failClosed": false,
+        "timeout": 5000
+      }
+    ]
+  }
+}

@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/precc-core",
     "crates/precc-hook",
+    "crates/precc-cursor-hook",
+    "crates/precc-shell",
     "crates/precc-cli",
 ]
 
