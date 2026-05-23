@@ -1,0 +1,20 @@
+[skill]
+name = "git-wrong-dir"
+description = "Detect and fix git commands run outside a Git repository"
+source = "builtin"
+priority = 50
+
+[[triggers]]
+type = "command_regex"
+pattern = "^git\\s+(status|log|diff|add|commit|push|pull|fetch|branch|checkout|stash|show)"
+weight = 1.0
+
+[[triggers]]
+type = "file_exists"
+pattern = "!.git"
+weight = 0.8
+
+[[actions]]
+type = "prepend_cd"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.9

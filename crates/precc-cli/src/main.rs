@@ -945,10 +945,7 @@ fn find_skills_dir() -> Option<std::path::PathBuf> {
     }
 
     let home = std::env::var("HOME").ok()?;
-    let candidates = [
-        format!("{home}/.local/share/precc/skills/builtin"),
-        format!("{home}/rtk/skills/builtin"),
-    ];
+    let candidates = [format!("{home}/.local/share/precc/skills/builtin")];
     for path in &candidates {
         let p = std::path::PathBuf::from(path);
         if p.is_dir() {

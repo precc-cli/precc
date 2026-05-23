@@ -1,0 +1,20 @@
+[skill]
+name = "docker-compose-wrong-dir"
+description = "Fix docker compose commands run outside a directory with a compose file"
+source = "builtin"
+priority = 50
+
+[[triggers]]
+type = "command_regex"
+pattern = "^docker[-\\s]compose\\s+(up|down|build|logs|ps|exec|run)"
+weight = 1.0
+
+[[triggers]]
+type = "file_exists"
+pattern = "!docker-compose.yml"
+weight = 0.6
+
+[[actions]]
+type = "prepend_cd"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.85

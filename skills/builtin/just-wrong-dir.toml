@@ -1,0 +1,20 @@
+[skill]
+name = "just-wrong-dir"
+description = "Fix just commands run outside a directory with a justfile"
+source = "builtin"
+priority = 50
+
+[[triggers]]
+type = "command_regex"
+pattern = "^just(\\s+|$)"
+weight = 1.0
+
+[[triggers]]
+type = "file_exists"
+pattern = "!justfile"
+weight = 0.8
+
+[[actions]]
+type = "prepend_cd"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.9
