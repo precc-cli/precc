@@ -11,6 +11,8 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use precc_core::{db, gdb, metrics, mining, rewrites, skills};
 
+mod embedded_skills;
+
 #[derive(Parser)]
 #[command(name = "precc", about = "Predictive Error Correction for Claude Code")]
 struct Cli {
@@ -94,22 +96,26 @@ fn cmd_init() -> Result<()> {
     db::open_metrics(&data_dir).context("failed to initialize metrics.db")?;
     println!("  metrics.db    — OK");
 
-    // Load builtin skills
+    // Materialize embedded builtin skills (idempotent: existing files
+    // are not overwritten, so user edits survive precc init re-runs).
+    let skills_dir = data_dir.join("skills/builtin");
+    let written = embedded_skills::materialize(&skills_dir)
+        .context("failed to write embedded builtin skills")?;
+    if written > 0 {
+        println!(
+            "  Wrote {} builtin skill(s) to {}",
+            written,
+            skills_dir.display()
+        );
+    }
+
+    // Load (or refresh) builtin skills from disk into heuristics.db.
     let heuristics_conn = db::open_heuristics(&data_dir)?;
-    let skills_dir = find_skills_dir();
-    if let Some(dir) = &skills_dir {
-        let loaded = skills::load_builtin_skills(&heuristics_conn, dir)?;
-        if loaded > 0 {
-            println!(
-                "  Loaded {} builtin skill(s) from {}",
-                loaded,
-                dir.display()
-            );
-        } else {
-            println!("  Builtin skills already loaded");
-        }
+    let loaded = skills::load_builtin_skills(&heuristics_conn, &skills_dir)?;
+    if loaded > 0 {
+        println!("  Loaded {loaded} builtin skill(s) into heuristics.db");
     } else {
-        println!("  No builtin skills directory found (looked for skills/builtin/)");
+        println!("  Builtin skills already in heuristics.db");
     }
 
     // Print hook setup instructions
@@ -932,29 +938,4 @@ fn truncate_str(s: &str, max_len: usize) -> &str {
     } else {
         &s[..max_len]
     }
-}
-
-/// Find the skills/builtin/ directory (same logic as precc-hook).
-fn find_skills_dir() -> Option<std::path::PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        let mut dir = exe.parent()?.to_path_buf();
-        for _ in 0..5 {
-            let candidate = dir.join("skills/builtin");
-            if candidate.is_dir() {
-                return Some(candidate);
-            }
-            dir = dir.parent()?.to_path_buf();
-        }
-    }
-
-    let home = std::env::var("HOME").ok()?;
-    let candidates = [format!("{home}/.local/share/precc/skills/builtin")];
-    for path in &candidates {
-        let p = std::path::PathBuf::from(path);
-        if p.is_dir() {
-            return Some(p);
-        }
-    }
-
-    None
 }
