@@ -230,6 +230,7 @@ fn cmd_ingest(file: Option<String>, all: bool) -> Result<()> {
 fn cmd_skills(action: Option<SkillsAction>) -> Result<()> {
     let data_dir = db::data_dir()?;
     let conn = db::open_heuristics(&data_dir)?;
+    let _ = skills::replay_activations(&conn);
 
     match action {
         Some(SkillsAction::List) | None => cmd_skills_list(&conn),
@@ -537,6 +538,7 @@ fn cmd_report() -> Result<()> {
 
     // Skills summary
     if let Ok(heuristics_conn) = db::open_heuristics(&data_dir) {
+        let _ = skills::replay_activations(&heuristics_conn);
         let skill_count: i64 = heuristics_conn
             .query_row("SELECT COUNT(*) FROM skills", [], |r| r.get(0))
             .unwrap_or(0);
@@ -826,6 +828,7 @@ fn cmd_savings() -> Result<()> {
     };
 
     let skill_activations: i64 = if let Ok(conn) = db::open_heuristics(&data_dir) {
+        let _ = skills::replay_activations(&conn);
         conn.query_row(
             "SELECT COALESCE(SUM(activated), 0) FROM skill_stats",
             [],

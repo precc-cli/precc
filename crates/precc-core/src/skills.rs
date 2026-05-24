@@ -146,6 +146,79 @@ pub fn record_activation(conn: &Connection, skill_id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Replay any pending activations from `~/.local/share/precc/activations.log`
+/// into `skill_stats`, then truncate the log.
+///
+/// The hook writes one JSON-per-line entry per activation (cheap append,
+/// no DB write in the hot path). Measurement commands call this at start
+/// so counters reflect reality.
+///
+/// Fail-open: returns Ok(0) on any I/O error and leaves the log untouched.
+pub fn replay_activations(conn: &Connection) -> Result<usize> {
+    use std::io::Read;
+
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return Ok(0),
+    };
+    let log_path = std::path::Path::new(&home).join(".local/share/precc/activations.log");
+    if !log_path.exists() {
+        return Ok(0);
+    }
+
+    let mut content = String::new();
+    {
+        let mut f = match std::fs::File::open(&log_path) {
+            Ok(f) => f,
+            Err(_) => return Ok(0),
+        };
+        if f.read_to_string(&mut content).is_err() {
+            return Ok(0);
+        }
+    }
+    if content.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    let mut applied = 0usize;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Parse the tiny JSON written by precc_core::pipeline::append_activation_log.
+        // Format: {"ts":<u64>,"skill_id":<i64>,"skill_name":"...","conf":<f64>}
+        let skill_id = match extract_int_field(line, "\"skill_id\":") {
+            Some(id) => id,
+            None => continue,
+        };
+        if record_activation(&tx, skill_id).is_ok() {
+            applied += 1;
+        }
+    }
+    tx.commit()?;
+
+    // Truncate the log only after a successful commit so we never lose data
+    // on partial replay.
+    let _ = std::fs::File::create(&log_path);
+
+    Ok(applied)
+}
+
+/// Extract an integer field from a JSON-ish line, e.g.
+/// `extract_int_field(r#"{"skill_id":42,...}"#, "\"skill_id\":")` => Some(42).
+/// This is a tiny zero-dependency parser tailored to the exact line format
+/// written by the hook; it does not handle whitespace or escaped strings.
+fn extract_int_field(line: &str, key: &str) -> Option<i64> {
+    let start = line.find(key)? + key.len();
+    let rest = &line[start..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '-')
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
 /// Load built-in skills from TOML files into heuristics.db (if not already present).
 pub fn load_builtin_skills(conn: &Connection, skills_dir: &Path) -> Result<usize> {
     let mut loaded = 0;
@@ -409,5 +482,66 @@ confidence = 0.9
         let conn = test_db();
         let matches = find_matches(&conn, "echo hello", 0.0).unwrap();
         assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn extract_int_field_parses() {
+        let line = r#"{"ts":1779625618,"skill_id":42,"skill_name":"x","conf":0.900}"#;
+        assert_eq!(extract_int_field(line, "\"skill_id\":"), Some(42));
+        assert_eq!(extract_int_field(line, "\"ts\":"), Some(1779625618));
+        assert_eq!(extract_int_field(line, "\"missing\":"), None);
+    }
+
+    #[test]
+    fn replay_activations_round_trip() {
+        let home = tempfile::tempdir().unwrap();
+        let data_dir = home.path().join(".local/share/precc");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let conn = db::open_heuristics(&data_dir).unwrap();
+
+        // Insert a skill so the FK in skill_stats has something to point at.
+        conn.execute(
+            "INSERT INTO skills (id, name, description, source, priority, created_at, updated_at)
+             VALUES (7, 'demo', 'd', 'builtin', 50, '0', '0')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO skill_stats (skill_id, activated, succeeded, failed) VALUES (7, 0, 0, 0)",
+            [],
+        )
+        .unwrap();
+
+        // Drop two activation lines into the log.
+        let log = data_dir.join("activations.log");
+        std::fs::write(
+            &log,
+            "{\"ts\":1,\"skill_id\":7,\"skill_name\":\"demo\",\"conf\":0.900}\n\
+             {\"ts\":2,\"skill_id\":7,\"skill_name\":\"demo\",\"conf\":0.900}\n",
+        )
+        .unwrap();
+
+        // Replay needs HOME=tempdir to find the log.
+        let prev_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", home.path());
+        let applied = replay_activations(&conn).unwrap();
+        if let Some(h) = prev_home {
+            std::env::set_var("HOME", h);
+        }
+
+        assert_eq!(applied, 2);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT activated FROM skill_stats WHERE skill_id = 7",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Log should now be empty (truncated).
+        let post = std::fs::read_to_string(&log).unwrap();
+        assert!(post.is_empty(), "log should be truncated, got: {post:?}");
     }
 }
