@@ -3,10 +3,14 @@ name = "precc-hook"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
 description = "Claude Code PreToolUse:Bash hook binary for PRECC (< 5ms latency target)"
 
 [dependencies]
-precc-core = { path = "../precc-core" }
+precc-core = { path = "../precc-core", version = "0.1" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

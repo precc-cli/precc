@@ -3,10 +3,14 @@ name = "precc-cursor-hook"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
 description = "Cursor beforeShellExecution hook binary for PRECC"
 
 [dependencies]
-precc-core = { path = "../precc-core" }
+precc-core = { path = "../precc-core", version = "0.1" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

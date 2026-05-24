@@ -3,6 +3,10 @@ name = "precc-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
 description = "CLI tool for PRECC: ingest sessions, manage skills, debug, report"
 
 [[bin]]
@@ -10,7 +14,7 @@ name = "precc"
 path = "src/main.rs"
 
 [dependencies]
-precc-core = { path = "../precc-core" }
+precc-core = { path = "../precc-core", version = "0.1" }
 anyhow.workspace = true
 clap.workspace = true
 rusqlite.workspace = true

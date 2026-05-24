@@ -3,7 +3,11 @@ name = "precc-shell"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
 description = "$SHELL wrapper that runs commands through the PRECC pipeline (for Aider and other tools without a hook surface)"
 
 [dependencies]
-precc-core = { path = "../precc-core" }
+precc-core = { path = "../precc-core", version = "0.1" }

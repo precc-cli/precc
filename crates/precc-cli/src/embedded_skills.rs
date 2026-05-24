@@ -15,51 +15,51 @@
 pub const BUILTIN_SKILLS: &[(&str, &str)] = &[
     (
         "cargo-wrong-dir.toml",
-        include_str!("../../../skills/builtin/cargo-wrong-dir.toml"),
+        include_str!("../skills/builtin/cargo-wrong-dir.toml"),
     ),
     (
         "git-wrong-dir.toml",
-        include_str!("../../../skills/builtin/git-wrong-dir.toml"),
+        include_str!("../skills/builtin/git-wrong-dir.toml"),
     ),
     (
         "go-wrong-dir.toml",
-        include_str!("../../../skills/builtin/go-wrong-dir.toml"),
+        include_str!("../skills/builtin/go-wrong-dir.toml"),
     ),
     (
         "make-wrong-dir.toml",
-        include_str!("../../../skills/builtin/make-wrong-dir.toml"),
+        include_str!("../skills/builtin/make-wrong-dir.toml"),
     ),
     (
         "npm-wrong-dir.toml",
-        include_str!("../../../skills/builtin/npm-wrong-dir.toml"),
+        include_str!("../skills/builtin/npm-wrong-dir.toml"),
     ),
     (
         "python-wrong-dir.toml",
-        include_str!("../../../skills/builtin/python-wrong-dir.toml"),
+        include_str!("../skills/builtin/python-wrong-dir.toml"),
     ),
     (
         "gradle-wrong-dir.toml",
-        include_str!("../../../skills/builtin/gradle-wrong-dir.toml"),
+        include_str!("../skills/builtin/gradle-wrong-dir.toml"),
     ),
     (
         "maven-wrong-dir.toml",
-        include_str!("../../../skills/builtin/maven-wrong-dir.toml"),
+        include_str!("../skills/builtin/maven-wrong-dir.toml"),
     ),
     (
         "bazel-wrong-dir.toml",
-        include_str!("../../../skills/builtin/bazel-wrong-dir.toml"),
+        include_str!("../skills/builtin/bazel-wrong-dir.toml"),
     ),
     (
         "docker-compose-wrong-dir.toml",
-        include_str!("../../../skills/builtin/docker-compose-wrong-dir.toml"),
+        include_str!("../skills/builtin/docker-compose-wrong-dir.toml"),
     ),
     (
         "terraform-wrong-dir.toml",
-        include_str!("../../../skills/builtin/terraform-wrong-dir.toml"),
+        include_str!("../skills/builtin/terraform-wrong-dir.toml"),
     ),
     (
         "just-wrong-dir.toml",
-        include_str!("../../../skills/builtin/just-wrong-dir.toml"),
+        include_str!("../skills/builtin/just-wrong-dir.toml"),
     ),
 ];
 
