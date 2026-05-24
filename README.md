@@ -38,10 +38,10 @@ operational; the compressor layer ships with two adapters (`none`,
 ## Install
 
 ```bash
-cargo install --path crates/precc-cli
-cargo install --path crates/precc-hook            # Claude Code
-cargo install --path crates/precc-cursor-hook     # Cursor (optional)
-cargo install --path crates/precc-shell           # Aider (optional)
+cargo install precc-cli
+cargo install precc-hook            # Claude Code
+cargo install precc-cursor-hook     # Cursor (optional)
+cargo install precc-shell           # Aider (optional)
 precc init
 ```
 
