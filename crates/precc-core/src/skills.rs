@@ -51,9 +51,24 @@ pub fn find_matches(
         })
     })?;
 
+    // First word of the command, used by the fast-path skip below. A
+    // leading `cd <dir> && <verb> …` is special-cased so we look at the
+    // verb after the `cd`, not the literal `cd`.
+    let first_word = command_first_word_for_match(command);
+
     let mut matches = Vec::new();
     for row in rows {
         let row = row?;
+        // Fast-path: skip Regex::new entirely when the pattern reduces to a
+        // first-word literal (or small alternation) that the command's first
+        // word cannot match. Compiling ~16 builtin-skill regexes on every
+        // invocation is pure waste otherwise. Truly unanalysable patterns
+        // (e.g. `^\s*#`) fall through to the regex engine as before.
+        if let Some(literals) = pattern_first_word_literals(&row.pattern) {
+            if !literals.iter().any(|w| w == first_word) {
+                continue;
+            }
+        }
         // Compile and test the regex trigger
         if let Ok(re) = Regex::new(&row.pattern) {
             if re.is_match(command) {
@@ -75,6 +90,62 @@ pub fn find_matches(
     // Sort by confidence descending
     matches.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
     Ok(matches)
+}
+
+/// First word of a command, used to drive the [`find_matches`] fast-path.
+///
+/// Wrong-dir rewriters target the verb, not the `cd` wrapper, so a command
+/// of the form `cd <dir> && <verb> …` is reduced to `<verb>`. This mirrors
+/// the behaviour of the cd-prepend rewrites.
+fn command_first_word_for_match(command: &str) -> &str {
+    let trimmed = command.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("cd ") {
+        if let Some(idx) = rest.find(" && ") {
+            return rest[idx + 4..].split_whitespace().next().unwrap_or("");
+        }
+    }
+    trimmed.split_whitespace().next().unwrap_or("")
+}
+
+/// Extract the set of first-word literals from a `command_regex` pattern.
+///
+/// `None` means "unanalysable — caller must run the regex" (e.g. `.`,
+/// `^\s*#`, anchorless patterns). `Some(set)` means the command's first
+/// word must be one of `set` for the regex to have any chance of matching,
+/// so the caller can skip `Regex::new()` otherwise.
+fn pattern_first_word_literals(pat: &str) -> Option<Vec<String>> {
+    let stripped = pat.strip_prefix('^')?;
+    if stripped.starts_with('(') {
+        let end = stripped.find(')')?;
+        let inner = &stripped[1..end];
+        let mut out = Vec::new();
+        for word in inner.split('|') {
+            let w = word.trim();
+            if w.is_empty()
+                || !w
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return None; // alternation contains a complex element
+            }
+            out.push(w.to_string());
+        }
+        if out.is_empty() {
+            None
+        } else {
+            Some(out)
+        }
+    } else {
+        let word: String = stripped
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        if word.is_empty() {
+            None
+        } else {
+            Some(vec![word])
+        }
+    }
 }
 
 struct CandidateRow {
@@ -543,5 +614,47 @@ confidence = 0.9
         // Log should now be empty (truncated).
         let post = std::fs::read_to_string(&log).unwrap();
         assert!(post.is_empty(), "log should be truncated, got: {post:?}");
+    }
+
+    #[test]
+    fn first_word_literals_single() {
+        assert_eq!(
+            pattern_first_word_literals(r"^cargo\s+build"),
+            Some(vec!["cargo".to_string()])
+        );
+        assert_eq!(
+            pattern_first_word_literals(r"^go\s+"),
+            Some(vec!["go".to_string()])
+        );
+    }
+
+    #[test]
+    fn first_word_literals_alternation() {
+        let got = pattern_first_word_literals(r"^(npm|npx|pnpm|yarn)\s+").unwrap();
+        assert_eq!(got, vec!["npm", "npx", "pnpm", "yarn"]);
+    }
+
+    #[test]
+    fn first_word_literals_unanalysable() {
+        // No leading caret → can't infer first word
+        assert_eq!(pattern_first_word_literals(r"cargo"), None);
+        // Leading whitespace class → first char isn't a word char
+        assert_eq!(pattern_first_word_literals(r"^\s*#"), None);
+        // True catch-all
+        assert_eq!(pattern_first_word_literals(r"."), None);
+        // Alternation containing a regex metachar
+        assert_eq!(pattern_first_word_literals(r"^(npm|\w+)"), None);
+    }
+
+    #[test]
+    fn cmd_first_word_skips_cd_prepend() {
+        assert_eq!(
+            command_first_word_for_match("cd /repo && cargo build"),
+            "cargo"
+        );
+        assert_eq!(command_first_word_for_match("cargo build"), "cargo");
+        assert_eq!(command_first_word_for_match("  cargo build"), "cargo");
+        assert_eq!(command_first_word_for_match("ls"), "ls");
+        assert_eq!(command_first_word_for_match(""), "");
     }
 }
