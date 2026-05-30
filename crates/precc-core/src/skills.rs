@@ -485,6 +485,130 @@ fn default_confidence() -> f64 {
     0.5
 }
 
+/// Decrement the action confidence of a named skill by `delta` (clamped at 0).
+/// If the resulting max confidence drops below `disable_threshold`, the skill
+/// is auto-disabled (`enabled = 0`) and `Ok(true)` is returned.
+///
+/// Intended for a negative-feedback signal: when a skill's rewrite turns out to
+/// have been unhelpful, decay its confidence so repeated misses eventually
+/// retire it. Bumps the skill's `failed` counter as a side effect. A skill name
+/// that doesn't exist is a no-op returning `Ok(false)`.
+pub fn decay_confidence(
+    conn: &Connection,
+    skill_name: &str,
+    delta: f64,
+    disable_threshold: f64,
+) -> Result<bool> {
+    let skill_id: Option<i64> = conn
+        .query_row("SELECT id FROM skills WHERE name = ?1", [skill_name], |r| {
+            r.get(0)
+        })
+        .ok();
+    let Some(id) = skill_id else {
+        return Ok(false);
+    };
+
+    // Decrement confidence on every action row of this skill.
+    conn.execute(
+        "UPDATE skill_actions
+         SET confidence = MAX(0.0, confidence - ?1)
+         WHERE skill_id = ?2",
+        rusqlite::params![delta, id],
+    )?;
+    // Ensure a stats row exists, then bump the failed counter.
+    conn.execute(
+        "INSERT OR IGNORE INTO skill_stats (skill_id, activated, succeeded, failed, last_used)
+         VALUES (?1, 0, 0, 0, NULL)",
+        [id],
+    )?;
+    conn.execute(
+        "UPDATE skill_stats SET failed = failed + 1 WHERE skill_id = ?1",
+        [id],
+    )?;
+
+    // If the best remaining action is below threshold, disable the skill.
+    let max_conf: f64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(confidence), 0.0) FROM skill_actions WHERE skill_id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0.0);
+    if max_conf < disable_threshold {
+        conn.execute("UPDATE skills SET enabled = 0 WHERE id = ?1", [id])?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// Parse a skill TOML and update an existing skill in place.
+///
+/// Replaces the skill's metadata, triggers, and actions; the `skill_stats` row
+/// is preserved unchanged. Errors if the TOML's skill name doesn't match
+/// `existing_name` (rename-via-edit is not supported) or if the skill is
+/// absent.
+pub fn update_skill_toml(conn: &Connection, existing_name: &str, toml_content: &str) -> Result<()> {
+    let doc: SkillDoc = toml::from_str(toml_content)?;
+
+    if doc.skill.name != existing_name {
+        anyhow::bail!(
+            "skill name in TOML ({:?}) does not match existing name ({:?}); \
+             rename is not supported via edit",
+            doc.skill.name,
+            existing_name
+        );
+    }
+
+    let skill_id: i64 = match conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = ?1",
+            [existing_name],
+            |r| r.get(0),
+        )
+        .ok()
+    {
+        Some(id) => id,
+        None => anyhow::bail!("skill '{}' not found", existing_name),
+    };
+
+    let now = chrono_now();
+
+    // Update skill metadata.
+    conn.execute(
+        "UPDATE skills SET description = ?2, source = ?3, priority = ?4, updated_at = ?5
+         WHERE id = ?1",
+        rusqlite::params![
+            skill_id,
+            doc.skill.description,
+            doc.skill.source,
+            doc.skill.priority,
+            now
+        ],
+    )?;
+
+    // Replace triggers.
+    conn.execute("DELETE FROM skill_triggers WHERE skill_id = ?1", [skill_id])?;
+    for trigger in &doc.triggers {
+        conn.execute(
+            "INSERT INTO skill_triggers (skill_id, trigger_type, pattern, weight)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![skill_id, trigger.r#type, trigger.pattern, trigger.weight],
+        )?;
+    }
+
+    // Replace actions.
+    conn.execute("DELETE FROM skill_actions WHERE skill_id = ?1", [skill_id])?;
+    for action in &doc.actions {
+        conn.execute(
+            "INSERT INTO skill_actions (skill_id, action_type, template, confidence)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![skill_id, action.r#type, action.template, action.confidence],
+        )?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -752,5 +876,202 @@ confidence = 0.9
         assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.9 + 1e-12)]), 2);
         // Outside epsilon → not tied.
         assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.8)]), 1);
+    }
+
+    #[test]
+    fn decay_confidence_decrements_and_disables_below_threshold() {
+        let conn = test_db();
+        let now = chrono_now();
+        conn.execute(
+            "INSERT INTO skills (name, description, source, priority, created_at, updated_at)
+             VALUES ('decay-me', 'test', 'mined', 100, ?1, ?1)",
+            [&now],
+        )
+        .unwrap();
+        let skill_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO skill_actions (skill_id, action_type, template, confidence)
+             VALUES (?1, 'rewrite_command', 'rtk cargo', 0.35)",
+            [skill_id],
+        )
+        .unwrap();
+
+        // First decay: 0.35 → 0.30, still at threshold, not disabled.
+        assert!(!decay_confidence(&conn, "decay-me", 0.05, 0.30).unwrap());
+        // Second decay: 0.30 → 0.25, drops below threshold → disabled.
+        assert!(decay_confidence(&conn, "decay-me", 0.05, 0.30).unwrap());
+
+        let enabled: i64 = conn
+            .query_row(
+                "SELECT enabled FROM skills WHERE id = ?1",
+                [skill_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(enabled, 0);
+
+        // Failed counter incremented once per decay.
+        let failed: i64 = conn
+            .query_row(
+                "SELECT failed FROM skill_stats WHERE skill_id = ?1",
+                [skill_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(failed, 2);
+    }
+
+    #[test]
+    fn decay_confidence_unknown_skill_is_noop() {
+        let conn = test_db();
+        assert!(!decay_confidence(&conn, "does-not-exist", 0.10, 0.30).unwrap());
+    }
+
+    #[test]
+    fn update_skill_toml_changes_metadata_and_replaces_children() {
+        let conn = test_db();
+        let original = r#"
+[skill]
+name = "my-skill"
+description = "original description"
+source = "mined"
+priority = 100
+
+[[triggers]]
+type = "command_regex"
+pattern = "^cargo"
+weight = 1.0
+
+[[actions]]
+type = "rewrite_command"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.5
+"#;
+        load_skill_toml(&conn, original).unwrap();
+
+        let updated = r#"
+[skill]
+name = "my-skill"
+description = "updated description"
+source = "mined"
+priority = 200
+
+[[triggers]]
+type = "command_regex"
+pattern = "^cargo\\s+build"
+weight = 0.9
+
+[[actions]]
+type = "rewrite_command"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.7
+"#;
+        update_skill_toml(&conn, "my-skill", updated).unwrap();
+
+        let (desc, pri): (String, i64) = conn
+            .query_row(
+                "SELECT description, priority FROM skills WHERE name = 'my-skill'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(desc, "updated description");
+        assert_eq!(pri, 200);
+
+        // Children are replaced, not duplicated.
+        let trigger_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skill_triggers WHERE skill_id = \
+                 (SELECT id FROM skills WHERE name = 'my-skill')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(trigger_count, 1);
+
+        let conf: f64 = conn
+            .query_row(
+                "SELECT confidence FROM skill_actions WHERE skill_id = \
+                 (SELECT id FROM skills WHERE name = 'my-skill')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((conf - 0.7).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn update_skill_toml_rejects_name_change() {
+        let conn = test_db();
+        let original = r#"
+[skill]
+name = "orig-skill"
+description = "desc"
+source = "mined"
+priority = 100
+"#;
+        load_skill_toml(&conn, original).unwrap();
+
+        let renamed = r#"
+[skill]
+name = "renamed-skill"
+description = "desc"
+source = "mined"
+priority = 100
+"#;
+        let result = update_skill_toml(&conn, "orig-skill", renamed);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("rename is not supported"));
+    }
+
+    #[test]
+    fn update_skill_toml_preserves_stats() {
+        let conn = test_db();
+        let toml = r#"
+[skill]
+name = "stats-skill"
+description = "desc"
+source = "mined"
+priority = 100
+
+[[triggers]]
+type = "command_regex"
+pattern = "^npm"
+weight = 1.0
+
+[[actions]]
+type = "rewrite_command"
+template = "cd {{project_root}} && {{original_command}}"
+confidence = 0.5
+"#;
+        load_skill_toml(&conn, toml).unwrap();
+
+        let skill_id: i64 = conn
+            .query_row(
+                "SELECT id FROM skills WHERE name = 'stats-skill'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "UPDATE skill_stats SET activated = 7 WHERE skill_id = ?1",
+            [skill_id],
+        )
+        .unwrap();
+
+        update_skill_toml(&conn, "stats-skill", toml).unwrap();
+
+        // Stats survive the in-place update.
+        let activated: i64 = conn
+            .query_row(
+                "SELECT activated FROM skill_stats WHERE skill_id = ?1",
+                [skill_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(activated, 7);
     }
 }
