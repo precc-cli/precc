@@ -7,17 +7,21 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 /// Metric types recorded by the hook.
-pub enum MetricType {
+pub enum MetricType<'a> {
     HookLatency,
     SkillActivation,
     CdPrepend,
     GdbSuggestion,
     CompressorWrap,
     MinerTick,
+    /// Tool-specific metric whose name is supplied at the call site (e.g.
+    /// `"read_filter"`, `"grep_filter"`), so a new filter can record metrics
+    /// without extending this enum.
+    Custom(&'a str),
 }
 
-impl MetricType {
-    fn as_str(&self) -> &'static str {
+impl MetricType<'_> {
+    fn as_str(&self) -> &str {
         match self {
             MetricType::HookLatency => "hook_latency",
             MetricType::SkillActivation => "skill_activation",
@@ -25,6 +29,7 @@ impl MetricType {
             MetricType::GdbSuggestion => "gdb_suggestion",
             MetricType::CompressorWrap => "compressor_wrap",
             MetricType::MinerTick => "miner_tick",
+            MetricType::Custom(s) => s,
         }
     }
 }
@@ -82,6 +87,83 @@ pub fn summary(conn: &Connection, metric_type: MetricType) -> Result<Option<Metr
     } else {
         Ok(Some(result))
     }
+}
+
+/// Earliest metric timestamp in metrics.db, or `None` if empty.
+///
+/// Establishes the baseline cut-off for savings reporting: only count API
+/// tokens from sessions after the first metric was recorded.
+pub fn earliest_timestamp(conn: &Connection) -> Result<Option<std::time::SystemTime>> {
+    // strftime('%s', …) yields TEXT, which rusqlite won't coerce to i64, so
+    // CAST it to INTEGER. MIN over an empty table is NULL → Option::None → 0.
+    let secs: i64 = conn
+        .query_row(
+            "SELECT CAST(strftime('%s', MIN(timestamp)) AS INTEGER) FROM metrics",
+            [],
+            |r| Ok(r.get::<_, Option<i64>>(0)?.unwrap_or(0)),
+        )
+        .unwrap_or(0);
+    if secs > 0 {
+        Ok(Some(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs as u64),
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Import pending metrics from `metrics.log` into metrics.db.
+///
+/// The hook appends to `metrics.log` (O_APPEND, no DB overhead) and a daemon
+/// imports periodically; calling this on demand lets CLI commands see
+/// up-to-date data even when the daemon isn't running. An atomic rename lets
+/// the hook keep writing a fresh log concurrently without double-counting.
+/// Returns the number of entries imported.
+pub fn import_log(conn: &Connection, data_dir: &std::path::Path) -> Result<usize> {
+    let log_path = data_dir.join("metrics.log");
+    if !log_path.exists() {
+        return Ok(0);
+    }
+
+    let processing_path = data_dir.join("metrics.log.processing");
+    if std::fs::rename(&log_path, &processing_path).is_err() {
+        // Another importer grabbed it first — skip silently.
+        return Ok(0);
+    }
+
+    let content = match std::fs::read_to_string(&processing_path) {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = std::fs::remove_file(&processing_path);
+            return Ok(0);
+        }
+    };
+
+    let mut count = 0;
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parsed: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let metric_type = match parsed.get("type").and_then(|v| v.as_str()) {
+            Some(t) => t.to_string(),
+            None => continue,
+        };
+        let value = parsed.get("value").and_then(|v| v.as_f64()).unwrap_or(1.0);
+
+        let _ = conn.execute(
+            "INSERT INTO metrics (timestamp, metric_type, value, metadata)
+             VALUES (datetime('now'), ?1, ?2, NULL)",
+            rusqlite::params![metric_type, value],
+        );
+        count += 1;
+    }
+
+    let _ = std::fs::remove_file(&processing_path);
+    Ok(count)
 }
 
 // ─── Savings measurements import + queries ─────────────────────────────────
@@ -340,6 +422,129 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn all_builtin_metric_types_as_str() {
+        assert_eq!(MetricType::HookLatency.as_str(), "hook_latency");
+        assert_eq!(MetricType::SkillActivation.as_str(), "skill_activation");
+        assert_eq!(MetricType::CdPrepend.as_str(), "cd_prepend");
+        assert_eq!(MetricType::GdbSuggestion.as_str(), "gdb_suggestion");
+        assert_eq!(MetricType::CompressorWrap.as_str(), "compressor_wrap");
+        assert_eq!(MetricType::MinerTick.as_str(), "miner_tick");
+    }
+
+    #[test]
+    fn custom_metric_type_as_str() {
+        assert_eq!(MetricType::Custom("read_filter").as_str(), "read_filter");
+        assert_eq!(MetricType::Custom("grep_filter").as_str(), "grep_filter");
+    }
+
+    #[test]
+    fn record_and_query_custom_metric() {
+        let conn = test_db();
+        record(&conn, MetricType::Custom("read_filter"), 1.0, None).unwrap();
+        record(&conn, MetricType::Custom("read_filter"), 1.0, None).unwrap();
+
+        let s = summary(&conn, MetricType::Custom("read_filter"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.count, 2);
+        assert!((s.total - 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn custom_metrics_isolated_from_each_other_and_builtins() {
+        let conn = test_db();
+        record(&conn, MetricType::Custom("read_filter"), 1.0, None).unwrap();
+        record(&conn, MetricType::Custom("grep_filter"), 1.0, None).unwrap();
+        record(&conn, MetricType::HookLatency, 2.5, None).unwrap();
+
+        assert_eq!(
+            summary(&conn, MetricType::Custom("read_filter"))
+                .unwrap()
+                .unwrap()
+                .count,
+            1
+        );
+        assert_eq!(
+            summary(&conn, MetricType::HookLatency)
+                .unwrap()
+                .unwrap()
+                .count,
+            1
+        );
+        // A never-recorded custom name has no rows.
+        assert!(summary(&conn, MetricType::Custom("agent_propagate"))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn earliest_timestamp_empty_then_populated() {
+        let conn = test_db();
+        assert!(earliest_timestamp(&conn).unwrap().is_none());
+        record(&conn, MetricType::HookLatency, 1.0, None).unwrap();
+        assert!(earliest_timestamp(&conn).unwrap().is_some());
+    }
+
+    #[test]
+    fn import_log_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_metrics(dir.path()).unwrap();
+
+        let log = dir.path().join("metrics.log");
+        std::fs::write(
+            &log,
+            "{\"type\":\"cd_prepend\",\"value\":1.0}\n\
+             {\"type\":\"read_filter\",\"value\":1.0}\n\
+             {\"type\":\"hook_latency\",\"value\":2.5}\n",
+        )
+        .unwrap();
+
+        assert_eq!(import_log(&conn, dir.path()).unwrap(), 3);
+        assert_eq!(
+            summary(&conn, MetricType::CdPrepend)
+                .unwrap()
+                .unwrap()
+                .count,
+            1
+        );
+        // A non-builtin type round-trips and is queryable via Custom.
+        assert_eq!(
+            summary(&conn, MetricType::Custom("read_filter"))
+                .unwrap()
+                .unwrap()
+                .count,
+            1
+        );
+        // Log is consumed by the atomic rename.
+        assert!(!log.exists());
+    }
+
+    #[test]
+    fn import_log_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_metrics(dir.path()).unwrap();
+        assert_eq!(import_log(&conn, dir.path()).unwrap(), 0);
+    }
+
+    #[test]
+    fn import_log_skips_bad_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_metrics(dir.path()).unwrap();
+
+        let log = dir.path().join("metrics.log");
+        std::fs::write(
+            &log,
+            "not json\n\
+             {\"type\":\"cd_prepend\",\"value\":1.0}\n\
+             {\"no_type\":true}\n",
+        )
+        .unwrap();
+
+        // Only the well-formed line with a "type" is imported.
+        assert_eq!(import_log(&conn, dir.path()).unwrap(), 1);
     }
 
     // ─── Savings measurements ──────────────────────────────────────────────
