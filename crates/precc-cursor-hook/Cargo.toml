@@ -10,7 +10,7 @@ readme = "../../README.md"
 description = "Cursor beforeShellExecution hook binary for PRECC"
 
 [dependencies]
-precc-core = { path = "../precc-core", version = "0.1" }
+precc-core = { path = "../precc-core", version = "0.2" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
