@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/precc-cli/precc/actions/workflows/ci.yml/badge.svg)](https://github.com/precc-cli/precc/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![built on RTK](https://img.shields.io/badge/built_on-RTK-blue)](https://github.com/rtk-ai/rtk)
 
 **Predictive error correction for LLM-driven shells.**
 
@@ -26,7 +27,7 @@ Four pillars, one hook:
    `jj`-colocated repo becomes `jj status`; `asciinema rec` becomes
    `precc gif`; …
 
-Optional fifth: pluggable **output compressors** (e.g. `rtk`) — opt-in
+Optional fifth: pluggable **output compressors** (e.g. [`rtk`](https://github.com/rtk-ai/rtk)) — opt-in
 via `~/.config/precc/config.toml`.
 
 ## Status
@@ -76,6 +77,21 @@ Aider has no hook surface. PRECC ships [`precc-shell`](crates/precc-shell),
 a thin `$SHELL` wrapper. Install it and set `SHELL=$(which precc-shell)`;
 Aider's `/run` invocations now flow through PRECC. See
 [`examples/aider/`](examples/aider/) for details.
+
+## Acknowledgments
+
+PRECC stands on excellent open tools — it's the predictive/agent layer, not a
+from-scratch reinvention:
+
+- **[RTK](https://github.com/rtk-ai/rtk)** — the command-output compression
+  engine behind PRECC's `rtk` compressor. When the compressor is enabled, PRECC
+  rewrites recognized commands to run through RTK so coding agents see compact
+  output and burn less context. The rewriting is RTK's; PRECC decides *when* to
+  apply it.
+- The Rust ecosystem — `rusqlite`, `regex`, `serde`, `clap`, and friends.
+
+PRECC integrates these as optional, pluggable backends; credit for the
+compression work belongs upstream.
 
 ## License
 
