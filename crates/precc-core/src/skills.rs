@@ -89,7 +89,64 @@ pub fn find_matches(
 
     // Sort by confidence descending
     matches.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+
+    // Observability probe (opt-in): when two or more matches tie for the top
+    // confidence, the pick between them is arbitrary. Logging how often that
+    // happens shows whether a smarter tie-breaker would change selection.
+    // Gated on PRECC_SKILL_TIE_PROBE or PRECC_HOOK_TRACE; off by default, so
+    // normal runs are unaffected.
+    if tie_probe_enabled() {
+        let tied = top_confidence_ties(&matches);
+        if tied >= 2 {
+            log_skill_tie(tied);
+        }
+    }
+
     Ok(matches)
+}
+
+/// Count how many leading matches share the top confidence (within a small
+/// epsilon). Assumes `matches` is sorted by confidence descending. Returns 0
+/// for fewer than two matches or when the top two differ.
+fn top_confidence_ties(matches: &[SkillMatch]) -> usize {
+    if matches.len() < 2 {
+        return 0;
+    }
+    let top = matches[0].confidence;
+    matches
+        .iter()
+        .take_while(|m| (m.confidence - top).abs() < 1e-9)
+        .count()
+}
+
+/// Lazy, cached env-var read: either `PRECC_SKILL_TIE_PROBE` (narrow probe
+/// opt-in) or `PRECC_HOOK_TRACE` (general trace, which implies the probe).
+fn tie_probe_enabled() -> bool {
+    use std::sync::OnceLock;
+    static PROBE: OnceLock<bool> = OnceLock::new();
+    *PROBE.get_or_init(|| {
+        std::env::var("PRECC_SKILL_TIE_PROBE").is_ok() || std::env::var("PRECC_HOOK_TRACE").is_ok()
+    })
+}
+
+/// Append one tie observation to `metrics.log` as a JSONL line. Best-effort —
+/// errors are swallowed. The line uses the same shape `import_log` reads, so
+/// it surfaces as the `skill_tie_at_top` metric after import.
+fn log_skill_tie(tied: usize) {
+    use std::io::Write;
+    let Ok(data_dir) = crate::db::data_dir() else {
+        return;
+    };
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let line = format!("{{\"ts\":{ts},\"type\":\"skill_tie_at_top\",\"value\":{tied}.0}}\n");
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(data_dir.join("metrics.log"))
+        .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
 /// First word of a command, used to drive the [`find_matches`] fast-path.
@@ -656,5 +713,44 @@ confidence = 0.9
         assert_eq!(command_first_word_for_match("  cargo build"), "cargo");
         assert_eq!(command_first_word_for_match("ls"), "ls");
         assert_eq!(command_first_word_for_match(""), "");
+    }
+
+    fn sm(confidence: f64) -> SkillMatch {
+        SkillMatch {
+            skill_name: "s".to_string(),
+            action_type: "rewrite_command".to_string(),
+            template: "t".to_string(),
+            confidence,
+            skill_id: 1,
+        }
+    }
+
+    #[test]
+    fn top_ties_needs_two() {
+        assert_eq!(top_confidence_ties(&[]), 0);
+        assert_eq!(top_confidence_ties(&[sm(0.9)]), 0);
+    }
+
+    #[test]
+    fn top_ties_clear_winner_is_one() {
+        // A single top match (no tie) counts as 1 — below the log threshold.
+        assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.5)]), 1);
+    }
+
+    #[test]
+    fn top_ties_counts_shared_top_only() {
+        assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.9), sm(0.5)]), 2);
+        assert_eq!(
+            top_confidence_ties(&[sm(0.8), sm(0.8), sm(0.8), sm(0.2)]),
+            3
+        );
+    }
+
+    #[test]
+    fn top_ties_respects_epsilon() {
+        // Within epsilon → tied.
+        assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.9 + 1e-12)]), 2);
+        // Outside epsilon → not tied.
+        assert_eq!(top_confidence_ties(&[sm(0.9), sm(0.8)]), 1);
     }
 }
