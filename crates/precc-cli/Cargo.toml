@@ -14,7 +14,7 @@ name = "precc"
 path = "src/main.rs"
 
 [dependencies]
-precc-core = { path = "../precc-core", version = "0.1" }
+precc-core = { path = "../precc-core", version = "0.2" }
 anyhow.workspace = true
 clap.workspace = true
 rusqlite.workspace = true
