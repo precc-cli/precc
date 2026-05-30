@@ -181,7 +181,28 @@ fn init_metrics_schema(conn: &Connection) -> Result<()> {
         );
 
         CREATE INDEX IF NOT EXISTS idx_metrics_type ON metrics(metric_type);
-        CREATE INDEX IF NOT EXISTS idx_metrics_time ON metrics(timestamp);",
+        CREATE INDEX IF NOT EXISTS idx_metrics_time ON metrics(timestamp);
+
+        CREATE TABLE IF NOT EXISTS savings_measurements (
+            id                     INTEGER PRIMARY KEY,
+            timestamp              TEXT NOT NULL,
+            cmd_class              TEXT NOT NULL,
+            rewrite_type           TEXT NOT NULL,
+            compression_mode       TEXT,
+            probe_kind             TEXT DEFAULT 'live',
+            session_id             TEXT,
+            original_output_tokens INTEGER NOT NULL,
+            actual_output_tokens   INTEGER NOT NULL,
+            savings_tokens         INTEGER NOT NULL,
+            savings_pct            REAL NOT NULL,
+            measurement_method     TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_savings_class ON savings_measurements(cmd_class);
+        CREATE INDEX IF NOT EXISTS idx_savings_type ON savings_measurements(rewrite_type);
+        CREATE INDEX IF NOT EXISTS idx_savings_mode ON savings_measurements(compression_mode);
+        CREATE INDEX IF NOT EXISTS idx_savings_class_mode
+            ON savings_measurements(cmd_class, compression_mode);",
     )?;
     Ok(())
 }
