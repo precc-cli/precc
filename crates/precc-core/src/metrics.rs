@@ -243,11 +243,19 @@ pub struct MeasuredSavings {
 }
 
 /// Query total measured savings across all recorded measurements.
+///
+/// `savings_total` is the **net** of original − actual output tokens, not the
+/// sum of the per-row `savings_tokens` column. The per-row column is written as
+/// `original.saturating_sub(actual)`, which clamps every row where compression
+/// *increased* the output (actual > original, e.g. wrapper overhead on an
+/// already-small command) to zero. Summing that column counts only the wins and
+/// silently discards the losses, so it overstates true savings and disagrees
+/// with `original_total − actual_total`. Reporting the net keeps the three
+/// figures (original, actual, saved) self-consistent.
 pub fn total_measured_savings(conn: &Connection) -> Result<MeasuredSavings> {
     let result = conn.query_row(
         "SELECT COALESCE(SUM(original_output_tokens), 0),
                 COALESCE(SUM(actual_output_tokens), 0),
-                COALESCE(SUM(savings_tokens), 0),
                 COUNT(*),
                 COALESCE(SUM(CASE WHEN measurement_method = 'ground_truth' THEN 1 ELSE 0 END), 0)
          FROM savings_measurements",
@@ -255,15 +263,15 @@ pub fn total_measured_savings(conn: &Connection) -> Result<MeasuredSavings> {
         |r| {
             let orig: i64 = r.get(0)?;
             let actual: i64 = r.get(1)?;
-            let savings: i64 = r.get(2)?;
-            let count: i64 = r.get(3)?;
-            let gt_count: i64 = r.get(4)?;
+            let count: i64 = r.get(2)?;
+            let gt_count: i64 = r.get(3)?;
+            let net = orig.saturating_sub(actual).max(0);
             Ok(MeasuredSavings {
                 original_total: orig as u64,
                 actual_total: actual as u64,
-                savings_total: savings as u64,
+                savings_total: net as u64,
                 savings_pct: if orig > 0 {
-                    savings as f64 / orig as f64 * 100.0
+                    net as f64 / orig as f64 * 100.0
                 } else {
                     0.0
                 },
@@ -351,21 +359,32 @@ pub fn historical_baseline(conn: &Connection, cmd_class: &str) -> Result<(f64, i
     Ok(row)
 }
 
-/// Savings grouped by rewrite type, ordered by total tokens saved (desc).
+/// Savings grouped by rewrite type, ordered by net tokens saved (desc).
+///
+/// `total_savings_tokens` and `avg_savings_pct` are computed from the **net**
+/// (SUM(original) − SUM(actual)) per type, for the same reason as
+/// [`total_measured_savings`]: summing the per-row `savings_tokens` column
+/// clamps net-loss rows to zero and overstates savings. A type whose net is a
+/// loss is clamped to zero here (the field is unsigned).
 pub fn savings_by_rewrite_type(conn: &Connection) -> Result<Vec<RewriteTypeSavings>> {
     let mut stmt = conn.prepare(
-        "SELECT rewrite_type, COUNT(*), AVG(savings_pct), SUM(savings_tokens)
+        "SELECT rewrite_type, COUNT(*),
+                COALESCE(SUM(original_output_tokens), 0) - COALESCE(SUM(actual_output_tokens), 0),
+                CASE WHEN COALESCE(SUM(original_output_tokens), 0) > 0
+                     THEN (SUM(original_output_tokens) - SUM(actual_output_tokens)) * 100.0
+                          / SUM(original_output_tokens)
+                     ELSE 0 END
          FROM savings_measurements
          GROUP BY rewrite_type
-         ORDER BY SUM(savings_tokens) DESC",
+         ORDER BY 3 DESC",
     )?;
     let rows = stmt
         .query_map([], |r| {
             Ok(RewriteTypeSavings {
                 rewrite_type: r.get(0)?,
                 count: r.get::<_, i64>(1)? as u64,
-                avg_savings_pct: r.get(2)?,
-                total_savings_tokens: r.get::<_, i64>(3)? as u64,
+                avg_savings_pct: r.get::<_, f64>(3)?.max(0.0),
+                total_savings_tokens: r.get::<_, i64>(2)?.max(0) as u64,
             })
         })?
         .filter_map(|r| r.ok())
@@ -589,6 +608,48 @@ mod tests {
         assert_eq!(s.measurement_count, 0);
         assert_eq!(s.savings_total, 0);
         assert_eq!(s.savings_pct, 0.0);
+    }
+
+    /// A win (saved 300) plus a net-loss row where compression made the output
+    /// *larger* (actual > original). The per-row `savings_tokens` column clamps
+    /// the loss to 0, so SUM(savings_tokens) = 300; the honest net is
+    /// 500 − 400 = 100. `total_measured_savings` must report the net.
+    const SAVINGS_WITH_LOSS_FIXTURE: &str = concat!(
+        r#"{"cmd_class":"cat big","rewrite_type":"rtk","compression_mode":"rtk","probe_kind":"live","session_id":"s","original_output_tokens":400,"actual_output_tokens":100,"savings_tokens":300,"savings_pct":75.0,"measurement_method":"ground_truth"}"#,
+        "\n",
+        r#"{"cmd_class":"echo tiny","rewrite_type":"rtk","compression_mode":"rtk","probe_kind":"live","session_id":"s","original_output_tokens":100,"actual_output_tokens":300,"savings_tokens":0,"savings_pct":0.0,"measurement_method":"ground_truth"}"#,
+        "\n",
+    );
+
+    #[test]
+    fn total_measured_savings_subtracts_net_loss_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_metrics(dir.path()).unwrap();
+        std::fs::write(
+            dir.path().join("savings_measurements.jsonl"),
+            SAVINGS_WITH_LOSS_FIXTURE,
+        )
+        .unwrap();
+        assert_eq!(import_savings_log(&conn, dir.path()).unwrap(), 2);
+
+        // Clamped column sum would be 300 — what the old code reported.
+        let clamped: i64 = conn
+            .query_row(
+                "SELECT SUM(savings_tokens) FROM savings_measurements",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(clamped, 300);
+
+        let s = total_measured_savings(&conn).unwrap();
+        assert_eq!(s.original_total, 500);
+        assert_eq!(s.actual_total, 400);
+        assert_eq!(
+            s.savings_total, 100,
+            "net must subtract the loss, not clamp it"
+        );
+        assert!((s.savings_pct - 20.0).abs() < 0.01);
     }
 
     #[test]

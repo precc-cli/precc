@@ -336,7 +336,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "precc-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "precc-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "regex",
@@ -363,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "precc-cursor-hook"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "precc-core",
@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "precc-hook"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "precc-core",
@@ -383,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "precc-shell"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "precc-core",
 ]
