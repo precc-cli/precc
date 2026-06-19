@@ -2,6 +2,7 @@
 //! for LLM-driven shells).
 
 pub mod compressors;
+pub mod consent;
 pub mod context;
 pub mod db;
 pub mod gdb;
@@ -11,3 +12,4 @@ pub mod pipeline;
 pub mod promote;
 pub mod rewrites;
 pub mod skills;
+pub mod telemetry_schema;

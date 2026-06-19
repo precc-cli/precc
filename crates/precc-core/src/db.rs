@@ -16,6 +16,24 @@ pub fn data_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".local/share/precc"))
 }
 
+/// Config directory for PRECC: `~/.config/precc`, overridable via
+/// `PRECC_CONFIG_DIR`, or derived from `CLAUDE_CONFIG_DIR` for profile
+/// isolation. Used by the consent gate to locate `consent.toml`.
+pub fn config_dir() -> Result<PathBuf> {
+    if let Ok(p) = std::env::var("PRECC_CONFIG_DIR") {
+        if !p.is_empty() {
+            return Ok(PathBuf::from(p));
+        }
+    }
+    if let Ok(p) = std::env::var("CLAUDE_CONFIG_DIR") {
+        if !p.is_empty() {
+            return Ok(PathBuf::from(p).join("precc").join("config"));
+        }
+    }
+    let home = std::env::var("HOME").context("HOME not set")?;
+    Ok(PathBuf::from(home).join(".config/precc"))
+}
+
 /// Open a SQLite connection with performance-optimized pragmas.
 fn open_connection(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)
