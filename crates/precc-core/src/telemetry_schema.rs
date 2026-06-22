@@ -133,6 +133,17 @@ pub struct TelemetryPayload {
     /// rasterization) — the avoidable-mistake count.
     #[serde(default)]
     pub doc_advisory_count: u64,
+    /// Per-(command class, compression mode) measured savings. `class_strata`
+    /// and `by_rewrite_type` only carry the per-class and per-mode totals
+    /// separately; this is their cross product, which the fleet aggregator
+    /// needs to learn the best compression mode *per command class* and publish
+    /// a `mode_prior.tsv`. That prior lets a fresh install consult the fleet's
+    /// lesson (e.g. git diff → rtk) before it has accumulated its own
+    /// measurements — cold-start transfer learning. Counts and token sums only;
+    /// `cmd_class` sanitized like `class_strata`, list capped. Empty on clients
+    /// that predate the fleet-prior telemetry.
+    #[serde(default)]
+    pub class_mode_savings: Vec<ClassModeSavingsTelemetry>,
 }
 
 /// Telemetry view of a command-class stratum — a command class paired with
@@ -143,6 +154,19 @@ pub struct ClassStratumTelemetry {
     pub population_count: u64,
     pub measured_count: u64,
     pub measured_savings_total: u64,
+}
+
+/// Telemetry view of one (command class, compression mode) measured aggregate.
+/// `original_tokens`/`actual_tokens` give the net savings (original − actual)
+/// and the compression ratio per mode; `mode` is the CompressionMode string
+/// (`rtk`/`nushell`/`lean-ctx`/…). No commands, paths, or identifiers.
+#[derive(Debug, Serialize, Default)]
+pub struct ClassModeSavingsTelemetry {
+    pub cmd_class: String,
+    pub mode: String,
+    pub original_tokens: u64,
+    pub actual_tokens: u64,
+    pub count: u64,
 }
 
 /// Which optional features are installed/enabled on this machine. For each
